@@ -152,6 +152,16 @@ CODE:
     if (ret < 0)
         croak("Error in set_format: %s", logger->err);
 
+void
+set_ssl(logger, ssl)
+    LogSyslogFast* logger
+    int ssl
+ALIAS:
+    setSSL = 1
+CODE:
+    if (ssl)
+        croak("ssl not supported in XS module. Try ::PP");
+
 int
 get_priority(logger)
     LogSyslogFast* logger
@@ -205,6 +215,14 @@ get_format(logger)
     LogSyslogFast* logger
 CODE:
     RETVAL = LSF_get_format(logger);
+OUTPUT:
+    RETVAL
+    
+int
+get_ssl(logger)
+    LogSyslogFast* logger
+CODE:
+    RETVAL = 0;
 OUTPUT:
     RETVAL
 

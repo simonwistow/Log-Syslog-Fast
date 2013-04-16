@@ -186,6 +186,10 @@ Change what is sent as the process id of the sending program.
 Change the message format. This should be either the constant LOG_RFC3164 (the
 default) or LOG_RFC5424.
 
+=item $logger-E<gt>set_ssl($ssl)
+
+Set whether this is ssl or not. Will reopen the socket if it changes.
+
 =item $logger-E<gt>get_priority()
 
 Returns the current priority value.
@@ -198,9 +202,13 @@ Returns the current facility value.
 
 Returns the current severity value.
 
-=item $logger-E<gt>get_format($format)
+=item $logger-E<gt>get_format()
 
 Returns the current message format.
+
+=item $logger-E<gt>get_ssl()
+
+Returns whether this connection is using ssl or not.
 
 =back
 
@@ -235,6 +243,12 @@ With SOCK_DGRAM, I<< ->send >> to a peer that went away will throw. With
 SOCK_STREAM, I<< ->send >> to a peer that went away will raise SIGPIPE.
 
 =back
+
+=head1 SSL and TLS
+
+The Pure Perl version of this module, L<Log::Syslog::Fast::PP> supports logging over secure socket.
+
+See the documentation in that module for details.
 
 =head1 EXPORTS
 

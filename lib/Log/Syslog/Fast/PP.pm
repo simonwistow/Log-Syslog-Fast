@@ -35,7 +35,6 @@ push @{ $EXPORT_TAGS{'all'} }, @{ $EXPORT_TAGS{'formats'} };
 our @EXPORT_OK = @{ $EXPORT_TAGS{'all'} };
 our @EXPORT = qw();
 
-sub DESTROY { }
 
 sub AUTOLOAD {
     (my $meth = our $AUTOLOAD) =~ s/.*:://;
@@ -54,9 +53,26 @@ use constant LAST_TIME  => 5;
 use constant PREFIX     => 6;
 use constant PREFIX_LEN => 7;
 use constant FORMAT     => 8;
+use constant PROTO      => 9;
+use constant HOSTNAME   => 10;
+use constant PORT       => 11;
+use constant SSL        => 12;
+
+our $SSL = 0;
+our $SSL_ERROR = sub { };    
+our %DEFAULT_SSL_OPTS = ();
 
 eval 'use IO::Socket::SSL;';
-our $SSL = !$@;
+unless ($@) {
+  $SSL = 1;
+  $SSL_ERROR = sub { IO::Socket::SSL::errstr() };
+  %DEFAULT_SSL_OPTS = (
+        SSL_server         => 0,
+        SSL_version        => "TLSv1",
+        SSL_verify_mode    => IO::Socket::SSL::SSL_VERIFY_PEER(),
+        SSL_startHandshake => 0,
+    );
+}
 
 sub new {
     $_[0] = __PACKAGE__ unless defined $_[0];
@@ -80,13 +96,22 @@ sub new {
         undef, # prefix
         undef, # prefix_len
         LOG_RFC3164, # format
+        $proto, # proto
+        $hostname, # hostname
+        $port, # port
+        !!$ssl, # ssl
     ], $class;
 
     $self->update_prefix(time());
-
-    eval { $self->set_receiver($proto, $hostname, $port, $ssl, %ssl_opts) };
+    eval { $self->set_receiver($proto, $hostname, $port, %ssl_opts) };
     die "Error in ->new: $@" if $@;
     return $self;
+}
+
+sub DESTROY { 
+    my $self = shift;
+    return unless $SSL and $self->[SSL];
+    $self->[SOCK]->close(SSL_ctx_free => 1);
 }
 
 sub update_prefix {
@@ -111,8 +136,9 @@ sub update_prefix {
 sub set_receiver {
     my $self = shift;
     croak("hostname required") unless defined $_[1];
-    
-    my ($proto, $hostname, $port, $ssl, %ssl_opts) = @_;
+    croak "SSL not supported - you must install IO::Socket::SSL" if $self->[SSL] && !$SSL;
+
+    my ($proto, $hostname, $port, %ssl_opts) = @_;
 
     if ($proto == LOG_TCP) {
         $self->[SOCK] = IO::Socket::IP->new(
@@ -144,9 +170,8 @@ sub set_receiver {
     }
 
     die "Error in ->set_receiver: $!" unless $self->[SOCK];
-    if ($ssl) {
-        die "SSL not supported - you must install IO::Socket::SSL" unless $SSL;
-        IO::Socket::SSL->start_SSL($self->[SOCK], SSL_server => 0, Timeout => 2, %ssl_opts) or die "failed to upgrade to SSL: ".IO::Socket::SSL::errstr();
+    if ($self->[SSL]) {
+        IO::Socket::SSL->start_SSL($self->[SOCK], %DEFAULT_SSL_OPTS, %ssl_opts) or die "failed to upgrade to SSL: ".IO::Socket::SSL::errstr();
     }
     return;
 }
@@ -194,6 +219,13 @@ sub set_format {
     $self->update_prefix(time);
 }
 
+sub set_ssl {
+    my $self = shift;
+    return if $self->[SSL] == !!$_[0];
+    $self->[SSL] = shift;
+    $self->set_receiver($self->[PROTO], $self->[HOSTNAME], $self->[PORT], @_);
+}
+
 sub send {
     my $now = $_[2] || time;
 
@@ -204,8 +236,6 @@ sub send {
 
     send($_[0][SOCK], $_[0][PREFIX] . $_[1], 0) || die "Error while sending: $!";
 }
-
-#no warnings 'redefine';
 
 sub get_priority {
     my $self = shift;
@@ -242,6 +272,11 @@ sub get_format {
     return $self->[FORMAT];
 }
 
+sub get_ssl {
+    my $self = shift;
+    return $self->[SSL];
+}
+
 sub _get_sock {
     my $self = shift;
     return $self->[SOCK]->fileno;
@@ -264,6 +299,26 @@ Log::Syslog::Fast::PP - XS-free, API-compatible version of Log::Syslog::Fast
 
 This module should be fully API-compatible with L<Log::Syslog::Fast>; refer to
 its documentation for usage.
+
+In addition, this module supports SSL.
+
+=head1 SSL and TLS
+
+Simply pass in I<1> after name to enable SSL. You can optionally pass in a hash of options which get passed to L<IO::Socket::SSL>'s constructor.
+
+  use Log::Syslog::Fast::PP ':all';
+  my $SSL    = 1; 
+  my $logger = Log::Syslog::Fast::PP->new(LOG_UDP, "127.0.0.1", 514, LOG_LOCAL0, LOG_INFO, "mymachine", "logger", $SSL, %optional_ssl_params);
+  $logger->send("log message", time);
+
+Default SSL options are:
+
+    SSL_version     => TLSv1,
+    SSL_verify_mode => SSL_VERIFY_PEER
+    
+=head1 SEE ALSO
+
+L<IO::Socket::SSL>
 
 =head1 AUTHOR
 

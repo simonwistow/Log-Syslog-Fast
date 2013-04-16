@@ -87,6 +87,8 @@ for my $proto (LOG_TCP, LOG_UDP, LOG_UNIX) {
 }
 
 for my $p (sort keys %servers) {
+  SKIP: {
+    skip "::PP can't do unix datagrams", 49 if $p eq 'unix_dgram' && $CLASS eq "Log::Syslog::Fast::PP";
     my $listen = $servers{$p};
 
     # basic behavior
@@ -290,6 +292,7 @@ for my $p (sort keys %servers) {
         }
     };
     diag($@) if $@;
+  }
 }
 
 # test LOG_UNIX with nonexistent/non-sock endpoint
