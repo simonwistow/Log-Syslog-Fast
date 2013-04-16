@@ -15,7 +15,7 @@ INCLUDE: const-xs.inc
 PROTOTYPES: ENABLE
 
 LogSyslogFast*
-new(class, proto, hostname, port, facility, severity, sender, name)
+new(class, proto, hostname, port, facility, severity, sender, name, ssl = 0, ...)
     char* class
     int proto
     char* hostname
@@ -24,6 +24,7 @@ new(class, proto, hostname, port, facility, severity, sender, name)
     int severity
     char* sender
     char* name
+    int ssl;
 CODE:
     if (!hostname)
         croak("hostname required");
@@ -31,6 +32,8 @@ CODE:
         croak("sender required");
     if (!name)
         croak("name required");
+    if (ssl)
+        croak("ssl not supported in XS module. Try ::PP");
     RETVAL = LSF_alloc();
     if (!RETVAL)
         croak("Error in ->new: malloc failed");

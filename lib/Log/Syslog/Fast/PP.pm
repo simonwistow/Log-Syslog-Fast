@@ -55,18 +55,21 @@ use constant PREFIX     => 6;
 use constant PREFIX_LEN => 7;
 use constant FORMAT     => 8;
 
+eval 'use IO::Socket::SSL;';
+our $SSL = !$@;
+
 sub new {
     $_[0] = __PACKAGE__ unless defined $_[0];
 
     my $ref = shift;
     my $class = ref $ref || $ref;
 
-    my ($proto, $hostname, $port, $facility, $severity, $sender, $name) = @_;
+    my ($proto, $hostname, $port, $facility, $severity, $sender, $name, $ssl, %ssl_opts) = @_;
 
     croak "hostname required" unless defined $hostname;
     croak "sender required"   unless defined $sender;
     croak "name required"     unless defined $name;
-
+    
     my $self = bless [
         ($facility << 3) | $severity, # prio
         $sender, # sender
@@ -81,7 +84,7 @@ sub new {
 
     $self->update_prefix(time());
 
-    eval { $self->set_receiver($proto, $hostname, $port) };
+    eval { $self->set_receiver($proto, $hostname, $port, $ssl, %ssl_opts) };
     die "Error in ->new: $@" if $@;
     return $self;
 }
@@ -109,7 +112,7 @@ sub set_receiver {
     my $self = shift;
     croak("hostname required") unless defined $_[1];
     
-    my ($proto, $hostname, $port) = @_;
+    my ($proto, $hostname, $port, $ssl, %ssl_opts) = @_;
 
     if ($proto == LOG_TCP) {
         $self->[SOCK] = IO::Socket::IP->new(
@@ -141,6 +144,11 @@ sub set_receiver {
     }
 
     die "Error in ->set_receiver: $!" unless $self->[SOCK];
+    if ($ssl) {
+        die "SSL not supported - you must install IO::Socket::SSL" unless $SSL;
+        IO::Socket::SSL->start_SSL($self->[SOCK], SSL_server => 0, Timeout => 2, %ssl_opts) or die "failed to upgrade to SSL: ".IO::Socket::SSL::errstr();
+    }
+    return;
 }
 
 sub set_priority {
