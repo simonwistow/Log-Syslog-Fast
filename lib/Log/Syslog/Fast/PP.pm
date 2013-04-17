@@ -70,7 +70,7 @@ unless ($@) {
         SSL_server         => 0,
         SSL_version        => "TLSv1",
         SSL_verify_mode    => IO::Socket::SSL::SSL_VERIFY_PEER(),
-        SSL_startHandshake => 0,
+        SSL_startHandshake => 1,
     );
 }
 
@@ -110,7 +110,7 @@ sub new {
 
 sub DESTROY { 
     my $self = shift;
-    return unless $SSL and $self->[SSL];
+    return unless $SSL and $self->[SSL] and $self->[SOCK];
     $self->[SOCK]->close(SSL_ctx_free => 1);
 }
 
@@ -136,12 +136,16 @@ sub update_prefix {
 sub set_receiver {
     my $self = shift;
     croak("hostname required") unless defined $_[1];
-    croak "SSL not supported - you must install IO::Socket::SSL" if $self->[SSL] && !$SSL;
 
     my ($proto, $hostname, $port, %ssl_opts) = @_;
 
+    if ($self->[SSL]) {
+        croak("SSL not supported - you must install IO::Socket::SSL") unless $SSL;
+        croak("SSL requires using LOG_TCP") unless $proto == LOG_TCP;
+    }
+
     if ($proto == LOG_TCP) {
-        $self->[SOCK] = IO::Socket::IP->new(
+        $self->[SOCK] = IO::Socket::INET->new(
             Proto    => 'tcp',
             PeerHost => $hostname,
             PeerPort => $port,
@@ -171,7 +175,8 @@ sub set_receiver {
 
     die "Error in ->set_receiver: $!" unless $self->[SOCK];
     if ($self->[SSL]) {
-        IO::Socket::SSL->start_SSL($self->[SOCK], %DEFAULT_SSL_OPTS, %ssl_opts) or die "failed to upgrade to SSL: ".IO::Socket::SSL::errstr();
+        IO::Socket::SSL->start_SSL($self->[SOCK], %DEFAULT_SSL_OPTS, %ssl_opts) 
+            or do { $self->[SSL] = 0; die "failed to upgrade to SSL: ".IO::Socket::SSL::errstr() };
     }
     return;
 }
@@ -234,7 +239,12 @@ sub send {
         $_[0]->update_prefix($now);
     }
 
-    send($_[0][SOCK], $_[0][PREFIX] . $_[1], 0) || die "Error while sending: $!";
+    if ($_[0][SSL]) {
+        my $sock = $_[0][SOCK];
+        print $sock $_[0][PREFIX] . $_[1] || die "Error while sending: $! ".IO::Socket::SSL::errstr();
+    } else {
+        send($_[0][SOCK], $_[0][PREFIX] . $_[1], 0) || die "Error while sending: $!";
+    }
 }
 
 sub get_priority {
