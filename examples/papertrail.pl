@@ -6,12 +6,23 @@
 ########
 use strict;
 use warnings;
-use Log::Syslog::Fast::PP qw(:all);
+use Log::Syslog::Fast qw(:all);
+use Log::Syslog::Fast::PP;
 use Sys::Hostname qw(hostname);
 
 my $port   = shift || die "You must pass in your PaperTrail port number\n";
 my $msg    = shift || die "You must pass in a message\n";
-my @ssl    = !$_[0] ? ( ) : (1, SSL_cert_file => 'syslog.papertrail.crt');
+#my @ssl    = !$ARGV[0] ? ( ) : (1, SSL_cert_file => 'syslog.papertrail.crt', Timeout => 2, SSL_use_cert => 0);
+my @ssl    = ();
+my $proto  = LOG_UDP;
 
-my $logger = Log::Syslog::Fast::PP->new(LOG_UDP, 'logs.papertrailapp.com', $port, LOG_LOCAL0, LOG_CRIT, hostname, "papertrail_logger", @ssl);
-print "Sent: ".$logger->send($msg)."\n";
+if ($ARGV[0]) {
+    $proto  = LOG_TCP;
+    @ssl    = (1, Timeout => 2, SSL_cert_file => 'syslog.papertrail.crt');
+    $msg   .= " - TCP";
+} else {
+    $msg   .= " - UDP";    
+}
+
+my $logger = Log::Syslog::Fast::PP->new($proto, 'logs.papertrailapp.com', $port, LOG_LOCAL3, LOG_CRIT, hostname, "papertrail_logger", @ssl);
+print "Sent: ".$logger->send($msg, time)."\n";
