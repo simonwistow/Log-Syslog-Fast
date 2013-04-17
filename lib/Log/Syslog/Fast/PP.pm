@@ -145,7 +145,7 @@ sub set_receiver {
     }
 
     if ($proto == LOG_TCP) {
-        $self->[SOCK] = IO::Socket::INET->new(
+        $self->[SOCK] = IO::Socket::IP->new(
             Proto    => 'tcp',
             PeerHost => $hostname,
             PeerPort => $port,
@@ -239,12 +239,7 @@ sub send {
         $_[0]->update_prefix($now);
     }
 
-    if ($_[0][SSL]) {
-        my $sock = $_[0][SOCK];
-        print $sock $_[0][PREFIX] . $_[1] || die "Error while sending: $! ".IO::Socket::SSL::errstr();
-    } else {
-        send($_[0][SOCK], $_[0][PREFIX] . $_[1], 0) || die "Error while sending: $!";
-    }
+    send($_[0][SOCK], $_[0][PREFIX] . $_[1], 0) || die "Error while sending: $!";
 }
 
 sub get_priority {
