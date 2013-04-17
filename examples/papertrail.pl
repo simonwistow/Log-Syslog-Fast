@@ -9,6 +9,7 @@ use warnings;
 use Log::Syslog::Fast qw(:all);
 use Log::Syslog::Fast::PP;
 use Sys::Hostname qw(hostname);
+use IO::Socket::SSL qw(debug3);
 
 my $port   = shift || die "You must pass in your PaperTrail port number\n";
 my $msg    = shift || die "You must pass in a message\n";
