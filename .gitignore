@@ -13,3 +13,5 @@ MYMETA.*
 *.old
 Fast.c
 const-*.inc
+loggly
+papertrail
