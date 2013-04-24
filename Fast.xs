@@ -227,6 +227,13 @@ OUTPUT:
     RETVAL
 
 int
+can_ssl(...)
+CODE:
+    RETVAL = 0;
+OUTPUT:
+    RETVAL
+
+int
 _get_sock(logger)
     LogSyslogFast* logger
 CODE:

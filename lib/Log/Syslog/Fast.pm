@@ -210,6 +210,10 @@ Returns the current message format.
 
 Returns whether this connection is using ssl or not.
 
+=item $logg-E<gt>can_ssl()
+
+Whether the logger is capable of doing ssl or not.
+
 =back
 
 =head1 UNREACHABLE SERVERS

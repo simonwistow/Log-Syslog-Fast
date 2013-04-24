@@ -282,6 +282,10 @@ sub get_ssl {
     return $self->[SSL];
 }
 
+sub can_ssl {
+   $SSL 
+}
+
 sub _get_sock {
     my $self = shift;
     return $self->[SOCK]->fileno;
