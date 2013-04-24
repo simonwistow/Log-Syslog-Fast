@@ -59,13 +59,11 @@ use constant PORT       => 11;
 use constant SSL        => 12;
 
 our $SSL = 0;
-our $SSL_ERROR = sub { };    
 our %DEFAULT_SSL_OPTS = ();
 
 eval 'use IO::Socket::SSL;';
 unless ($@) {
   $SSL = 1;
-  $SSL_ERROR = sub { IO::Socket::SSL::errstr() };
   %DEFAULT_SSL_OPTS = (
         SSL_server         => 0,
         SSL_version        => "TLSv1",
