@@ -15,7 +15,7 @@ INCLUDE: const-xs.inc
 PROTOTYPES: ENABLE
 
 LogSyslogFast*
-new(class, proto, hostname, port, facility, severity, sender, name, ssl = 0, ...)
+new(class, proto, hostname, port, facility, severity, sender, name, ...)
     char* class
     int proto
     char* hostname
@@ -24,7 +24,6 @@ new(class, proto, hostname, port, facility, severity, sender, name, ssl = 0, ...
     int severity
     char* sender
     char* name
-    int ssl;
 CODE:
     if (!hostname)
         croak("hostname required");
@@ -32,8 +31,8 @@ CODE:
         croak("sender required");
     if (!name)
         croak("name required");
-    if (ssl)
-        croak("ssl not supported in XS module. Try ::PP");
+    if (proto == LOG_TLS)
+        croak("TLS not supported in XS module. Try ::PP");
     RETVAL = LSF_alloc();
     if (!RETVAL)
         croak("Error in ->new: malloc failed");
@@ -153,14 +152,14 @@ CODE:
         croak("Error in set_format: %s", logger->err);
 
 void
-set_ssl(logger, ssl)
+set_tls(logger, tls)
     LogSyslogFast* logger
-    int ssl
+    int tls
 ALIAS:
-    setSSL = 1
+    setTLS = 1
 CODE:
-    if (ssl)
-        croak("ssl not supported in XS module. Try ::PP");
+    if (tls)
+      croak("TLS not supported in XS module. Try ::PP");
 
 int
 get_priority(logger)
@@ -219,7 +218,7 @@ OUTPUT:
     RETVAL
     
 int
-get_ssl(logger)
+get_tls(logger)
     LogSyslogFast* logger
 CODE:
     RETVAL = 0;
@@ -227,7 +226,7 @@ OUTPUT:
     RETVAL
 
 int
-can_ssl(...)
+can_tls(...)
 CODE:
     RETVAL = 0;
 OUTPUT:

@@ -19,13 +19,15 @@ use Socket;
 use constant LOG_UDP    => 0; # UDP
 use constant LOG_TCP    => 1; # TCP
 use constant LOG_UNIX   => 2; # UNIX socket
+use constant LOG_TLS    => 3; # TLS encrypted TCP socket
+
 
 # formats
 use constant LOG_RFC3164 => 0;
 use constant LOG_RFC5424 => 1;
 
 our %EXPORT_TAGS = (
-    protos => [qw/ LOG_TCP LOG_UDP LOG_UNIX /],
+    protos => [qw/ LOG_TCP LOG_UDP LOG_UNIX LOG_TLS /],
     formats => [qw/ LOG_RFC3164 LOG_RFC5424 /],
     %Log::Syslog::Constants::EXPORT_TAGS,
 );
@@ -56,21 +58,12 @@ use constant FORMAT     => 8;
 use constant PROTO      => 9;
 use constant HOSTNAME   => 10;
 use constant PORT       => 11;
-use constant SSL        => 12;
+use constant TLS        => 12;
 
 our $SSL = 0;
-our %DEFAULT_SSL_OPTS = ();
 
 eval 'use IO::Socket::SSL;';
-unless ($@) {
-  $SSL = 1;
-  %DEFAULT_SSL_OPTS = (
-        SSL_server         => 0,
-        SSL_version        => "TLSv1",
-        SSL_verify_mode    => IO::Socket::SSL::SSL_VERIFY_PEER(),
-        SSL_startHandshake => 1,
-    );
-}
+$SSL = !$@;
 
 sub new {
     $_[0] = __PACKAGE__ unless defined $_[0];
@@ -78,7 +71,7 @@ sub new {
     my $ref = shift;
     my $class = ref $ref || $ref;
 
-    my ($proto, $hostname, $port, $facility, $severity, $sender, $name, $ssl, %ssl_opts) = @_;
+    my ($proto, $hostname, $port, $facility, $severity, $sender, $name, %ssl_opts) = @_;
 
     croak "hostname required" unless defined $hostname;
     croak "sender required"   unless defined $sender;
@@ -97,7 +90,6 @@ sub new {
         $proto, # proto
         $hostname, # hostname
         $port, # port
-        !!$ssl, # ssl
     ], $class;
 
     $self->update_prefix(time());
@@ -106,11 +98,7 @@ sub new {
     return $self;
 }
 
-sub DESTROY { 
-    my $self = shift;
-    return unless $SSL and $self->[SSL] and $self->[SOCK];
-    $self->[SOCK]->close(SSL_ctx_free => 1);
-}
+sub DESTROY {}
 
 sub update_prefix {
     my $self = shift;
@@ -137,11 +125,6 @@ sub set_receiver {
 
     my ($proto, $hostname, $port, %ssl_opts) = @_;
 
-    if ($self->[SSL]) {
-        croak("SSL not supported - you must install IO::Socket::SSL") unless $SSL;
-        croak("SSL requires using LOG_TCP") unless $proto == LOG_TCP;
-    }
-
     if ($proto == LOG_TCP) {
         $self->[SOCK] = IO::Socket::IP->new(
             Proto    => 'tcp',
@@ -155,6 +138,20 @@ sub set_receiver {
             PeerHost => $hostname,
             PeerPort => $port,
         );
+    }
+    elsif ($proto == LOG_TLS) {
+        croak("TLS not supported - you must install IO::Socket::SSL") unless $SSL;
+        $self->[SOCK] = IO::Socket::SSL->new(
+            Proto              => 'tcp',
+            PeerHost           => $hostname,
+            PeerPort           => $port,
+            SSL_server         => 0,
+            SSL_version        => "TLSv12",
+            SSL_verify_mode    => IO::Socket::SSL::SSL_VERIFY_PEER(),
+            SSL_startHandshake => 1,
+            %ssl_opts,
+        ) or do { $self->[TLS] = 0; die "failed to upgrade to TLS: ".IO::Socket::SSL::errstr() };
+        $self->[TLS] = 1;
     }
     elsif ($proto == LOG_UNIX) {
         eval {
@@ -172,10 +169,6 @@ sub set_receiver {
     }
 
     die "Error in ->set_receiver: $!" unless $self->[SOCK];
-    if ($self->[SSL]) {
-        IO::Socket::SSL->start_SSL($self->[SOCK], %DEFAULT_SSL_OPTS, %ssl_opts) 
-            or do { $self->[SSL] = 0; die "failed to upgrade to SSL: ".IO::Socket::SSL::errstr() };
-    }
     return;
 }
 
@@ -222,10 +215,10 @@ sub set_format {
     $self->update_prefix(time);
 }
 
-sub set_ssl {
+sub set_tls {
     my $self = shift;
-    return if $self->[SSL] == !!$_[0];
-    $self->[SSL] = shift;
+    return if $self->[TLS] == !!$_[0];
+    $self->[TLS] = shift;
     $self->set_receiver($self->[PROTO], $self->[HOSTNAME], $self->[PORT], @_);
 }
 
@@ -237,7 +230,11 @@ sub send {
         $_[0]->update_prefix($now);
     }
 
-    send($_[0][SOCK], $_[0][PREFIX] . $_[1], 0) || die "Error while sending: $!";
+    if ($_[0][TLS]) {
+        $_[0][SOCK]->print($_[0][PREFIX] . $_[1]);
+    } else {
+        send($_[0][SOCK], $_[0][PREFIX] . $_[1], 0) || die "Error while sending: $!";
+    }
 }
 
 sub get_priority {
@@ -275,12 +272,12 @@ sub get_format {
     return $self->[FORMAT];
 }
 
-sub get_ssl {
+sub get_tls {
     my $self = shift;
-    return $self->[SSL];
+    return $self->[TLS];
 }
 
-sub can_ssl {
+sub can_tls {
    $SSL 
 }
 
@@ -307,20 +304,19 @@ Log::Syslog::Fast::PP - XS-free, API-compatible version of Log::Syslog::Fast
 This module should be fully API-compatible with L<Log::Syslog::Fast>; refer to
 its documentation for usage.
 
-In addition, this module supports SSL.
+In addition, this module supports TLS.
 
-=head1 SSL and TLS
+=head1 TLS
 
-Simply pass in I<1> after name to enable SSL. You can optionally pass in a hash of options which get passed to L<IO::Socket::SSL>'s constructor.
+Simply pass in I<LOG_TLS> as the protocol to enable TLS. You can optionally pass in a hash of options which get passed to L<IO::Socket::SSL>'s constructor.
 
   use Log::Syslog::Fast::PP ':all';
-  my $SSL    = 1; 
-  my $logger = Log::Syslog::Fast::PP->new(LOG_UDP, "127.0.0.1", 514, LOG_LOCAL0, LOG_INFO, "mymachine", "logger", $SSL, %optional_ssl_params);
+  my $logger = Log::Syslog::Fast::PP->new(LOG_TLS, "127.0.0.1", 514, LOG_LOCAL0, LOG_INFO, "mymachine", "logger", %optional_ssl_params);
   $logger->send("log message", time);
 
 Default SSL options are:
 
-    SSL_version     => TLSv1,
+    SSL_version     => TLSv12,
     SSL_verify_mode => SSL_VERIFY_PEER
     
 =head1 SEE ALSO

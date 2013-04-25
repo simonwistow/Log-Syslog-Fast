@@ -201,11 +201,6 @@ LSF_set_format(LogSyslogFast* logger, int format)
 #define clean_return(x) return x;
 #endif
 
-/* must match constants in LogSyslogFast.pm */
-#define LOG_UDP  0
-#define LOG_TCP  1
-#define LOG_UNIX 2
-
 int
 LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int port)
 {

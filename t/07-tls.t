@@ -1,18 +1,10 @@
 use strict;
 use warnings;
 
-#use Log::Syslog::Fast ':all';
-# use Test::More tests => 1;
-# 
-# my $facility1 = LOG_AUTH;
-# my $severity1 = LOG_INFO;
-# my $sender1   = 'calvin';
-# my $name1     = 'popsicle';
-# my $pid1      = $$;
-
 our $CLASS = 'Log::Syslog::Fast';
 use Log::Syslog::Constants ':all';
-use Log::Syslog::Fast qw(:protos :formats);
+use Log::Syslog::Fast::PP qw(:protos :formats);
+use Log::Syslog::Fast;
 
 require 't/07-tls.pl';
 

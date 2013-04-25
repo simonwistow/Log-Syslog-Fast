@@ -53,7 +53,6 @@ use base 'Server';
 sub accept {
     my $self = shift;
     my $receiver = $self->{listener}->accept;
-    $receiver->blocking(0);
     return $receiver;
 }
 

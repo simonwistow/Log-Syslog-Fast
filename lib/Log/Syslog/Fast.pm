@@ -16,6 +16,8 @@ our @ISA = qw(Log::Syslog::Constants Exporter);
 use constant LOG_UDP    => 0; # UDP
 use constant LOG_TCP    => 1; # TCP
 use constant LOG_UNIX   => 2; # UNIX socket
+use constant LOG_TLS    => 3; # TLS encrypted TCP socket
+
 
 # formats
 use constant LOG_RFC3164 => 0;
@@ -186,9 +188,9 @@ Change what is sent as the process id of the sending program.
 Change the message format. This should be either the constant LOG_RFC3164 (the
 default) or LOG_RFC5424.
 
-=item $logger-E<gt>set_ssl($ssl)
+=item $logger-E<gt>set_tls($tls)
 
-Set whether this is ssl or not. Will reopen the socket if it changes.
+Set whether this is sent via TLS or not. Will reopen the socket if it changes.
 
 =item $logger-E<gt>get_priority()
 
@@ -206,13 +208,13 @@ Returns the current severity value.
 
 Returns the current message format.
 
-=item $logger-E<gt>get_ssl()
+=item $logger-E<gt>get_tls()
 
-Returns whether this connection is using ssl or not.
+Returns whether this connection is using TLS or not.
 
-=item $logg-E<gt>can_ssl()
+=item $logg-E<gt>can_tls()
 
-Whether the logger is capable of doing ssl or not.
+Whether the logger is capable of doing TLS or not.
 
 =back
 
@@ -248,7 +250,7 @@ SOCK_STREAM, I<< ->send >> to a peer that went away will raise SIGPIPE.
 
 =back
 
-=head1 SSL and TLS
+=head1 TLS
 
 The Pure Perl version of this module, L<Log::Syslog::Fast::PP> supports logging over secure socket.
 

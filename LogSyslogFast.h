@@ -6,6 +6,12 @@
 #define LOG_RFC3164 0
 #define LOG_RFC5424 1
 
+/* must match constants in LogSyslogFast.pm */
+#define LOG_UDP  0
+#define LOG_TCP  1
+#define LOG_UNIX 2
+#define LOG_TLS  3
+
 typedef struct {
 
     /* configuration */
