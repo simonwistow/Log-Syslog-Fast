@@ -14,6 +14,12 @@
 
 #define INITIAL_BUFSIZE 2048
 
+#define SSL_CA_FILE   "t/certs/test-ca.pem"
+#define SSL_CA_PATH   "t/certs"
+// #define SSL_CA_FILE   "examples/certs/syslog.loggly.crt"
+// #define SSL_CERT_FILE "examples/certs/client-cert.pem"
+// #define SSL_KEY_FILE  "examples/certs/client-key.pem"
+
 static
 void
 update_prefix(LogSyslogFast* logger, time_t t)
@@ -230,7 +236,7 @@ LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int por
     SSL_METHOD *client_meth;
     
     if (proto == LOG_TLS) {
-        proto = LOG_TCP;        
+        proto = LOG_TCP;   
         
         /* FIXME What about TLSv2 ? */
         client_meth = TLSv1_client_method();
@@ -250,6 +256,53 @@ LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int por
             SSL_CTX_free(logger->ssl_client_ctx);
             logger->err = "Couldn't create SSL client";
             return -1;
+        }
+        
+        /* FIX ME - load these from a config hash */
+#ifdef SSL_CA_FILE
+        if(SSL_CTX_use_certificate_file(logger->ssl_client_ctx, SSL_CA_FILE, SSL_FILETYPE_PEM) <= 0) {
+            logger->err = "Couldn't use cert";
+            ERR_print_errors_fp(stderr);
+            return -1;      
+        }
+        
+        if(SSL_CTX_load_verify_locations(logger->ssl_client_ctx, SSL_CA_FILE, SSL_CA_PATH) <= 0) {
+            logger->err = "Couldn't verify locations";
+            ERR_print_errors_fp(stderr);
+            return -1;
+        }
+#endif
+
+#ifdef SSL_CERT_FILE
+        if(SSL_CTX_use_certificate_chain_file(logger->ssl_client_ctx, SSL_CERT_FILE) <= 0) {
+            logger->err = "Couldn't use certificate chain file";
+            ERR_print_errors_fp(stderr);
+            return -1;
+        }
+#endif
+ 
+#ifdef SSL_KEY_FILE     
+        if (SSL_CTX_use_PrivateKey_file(logger->ssl_client_ctx, SSL_KEY_FILE, SSL_FILETYPE_PEM) <= 0) {
+            logger->err = "Couldn't use private key file";
+            ERR_print_errors_fp(stderr);
+            return -1;
+        }
+#endif
+        
+        
+        SSL_CTX_set_verify(logger->ssl_client_ctx, SSL_VERIFY_PEER, NULL);
+        SSL_CTX_set_verify_depth(logger->ssl_client_ctx, 1);
+        
+        /* FIXME do verify_peer needs to be configurable */
+        X509 *ssl_client_cert = NULL;
+        if (ssl_client_cert = SSL_get_peer_certificate(logger->clientssl)) {
+            long verifyresult = SSL_get_verify_result(logger->clientssl);
+            X509_free(ssl_client_cert);   
+             
+            if (verifyresult != X509_V_OK) {
+                logger->err = "TLS Certificate Verify Failed";
+                return -1;
+            }
         }
     }
 #endif
@@ -367,7 +420,8 @@ LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int por
         if (logger->clientssl) {
             SSL_set_fd(logger->clientssl, logger->sock);
             if((r = SSL_connect(logger->clientssl)) != 1) {
-                logger->err = "Handshake Error"; /* FIXME proper errors */
+                fprintf(stderr, "TLS Handshake Error: %d\n", SSL_get_error(logger->clientssl, r));
+                logger->err = "TLS Handshake Error"; /* FIXME proper errors */
                 return -1;
             }
         }
@@ -465,8 +519,20 @@ LSF_send(LogSyslogFast* logger, const char* msg_str, int msg_len, time_t t)
 #ifdef USE_TLS
     if (logger->clientssl) {
         ret = SSL_write(logger->clientssl, logger->linebuf, line_len);
-        if (ret < 0)
-            logger->err = "Failed to send SSL"; /* FIXME proper errors */
+        if (ret <= 0) {
+            switch (SSL_get_error(logger->clientssl, ret)) {
+            case SSL_ERROR_WANT_READ:
+                logger->err = "SSL_ERROR_WANT_READ in SSL_write()";
+            case SSL_ERROR_WANT_WRITE:
+                logger->err = "SSL_ERROR_WANT_WRITE in SSL_write()";
+            case SSL_ERROR_SYSCALL:
+                if (ret == 0) {
+                    logger->err = "Premature EOF on socket (write)";
+                } else {
+                    logger->err = "Error on socket";
+                }
+            }
+        }
     } else {
 #endif
         ret = send(logger->sock, logger->linebuf, line_len, 0);
