@@ -12,9 +12,10 @@ use Sys::Hostname qw(hostname);
 use IO::Socket::SSL qw(debug4);
 use FindBin qw($Bin);
 
+
 my $port   = shift;
 my $msg    = shift || die "You must pass in a message\n";
-my %ssl    = ( SSL_ca_file => "$Bin/certs/loggly_full.crt", SSL_cert_file => "$Bin/certs/client-cert.pem", SSL_key_file => "$Bin/certs/client-key.pem" );
+my %ssl    = ( SSL_ca_file => "$Bin/certs/syslog.loggly.crt", SSL_cert_file => "$Bin/certs/client-cert.pem", SSL_key_file => "$Bin/certs/client-key.pem" );
 my $proto  = LOG_UDP;
 
 if ($ARGV[0]==2) {
@@ -27,5 +28,6 @@ if ($ARGV[0]==2) {
     $msg   .= " - UDP";   
 }
 
-my $logger = Log::Syslog::Fast::PP->new($proto, 'logs.loggly.com', $port, LOG_LOCAL3, LOG_CRIT, hostname, "loggly_logger", %ssl);
+#my $logger = Log::Syslog::Fast::PP->new($proto, 'logs.loggly.com', $port, LOG_LOCAL3, LOG_CRIT, hostname, "loggly_logger", %ssl);
+my $logger = Log::Syslog::Fast->new($proto, 'logs.loggly.com', $port, LOG_LOCAL3, LOG_CRIT, hostname, "loggly_logger");
 print "Sent: ".$logger->send($msg, time)."\n";
