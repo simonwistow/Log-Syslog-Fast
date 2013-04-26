@@ -71,6 +71,13 @@ LSF_init(
 
     logger->priority = (facility << 3) | severity;
     update_prefix(logger, time(0));
+    
+#ifdef USE_TLS
+    SSL_library_init();
+    SSL_load_error_strings();
+    logger->ssl_client_ctx = 0;
+    logger->clientssl = 0;
+#endif
 
     return LSF_set_receiver(logger, proto, hostname, port);
 }
@@ -78,6 +85,14 @@ LSF_init(
 int
 LSF_destroy(LogSyslogFast* logger)
 {
+
+#ifdef USE_TLS
+    if (logger->clientssl) {
+        SSL_shutdown(logger->clientssl);
+        SSL_free(logger->clientssl);
+        SSL_CTX_free(logger->ssl_client_ctx);
+    }
+#endif
     int ret = close(logger->sock);
     if (ret)
         logger->err = strerror(errno);
@@ -206,6 +221,39 @@ LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int por
 {
     const struct sockaddr* p_address;
     int address_len;
+#ifndef USE_TLS
+    if (proto == LOG_TLS) {
+           logger->err = "TLS not supported - you must recompile with openssl";
+           return -1;
+    }
+#else
+    SSL_METHOD *client_meth;
+    
+    if (proto == LOG_TLS) {
+        proto = LOG_TCP;        
+        
+        /* FIXME What about TLSv2 ? */
+        client_meth = TLSv1_client_method();
+        if (!logger->ssl_client_ctx)
+            logger->ssl_client_ctx = SSL_CTX_new(client_meth);
+
+        if(!logger->ssl_client_ctx) {
+            /* FIXME get the proper error in there */
+            logger->err = "Couldn't create SSL context";
+            return -1;
+        }
+        /* FIXME certifcate certification */
+        if (!logger->clientssl)
+            logger->clientssl = SSL_new(logger->ssl_client_ctx);
+            
+        if (!logger->clientssl) {
+            SSL_CTX_free(logger->ssl_client_ctx);
+            logger->err = "Couldn't create SSL client";
+            return -1;
+        }
+    }
+#endif
+
 #ifdef AF_INET6
     struct addrinfo* results = NULL;
 #endif
@@ -217,6 +265,8 @@ LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int por
             return -1;
         }
     }
+    
+
 
     /* set up a socket, letting kernel assign local port */
     if (proto == LOG_UDP || proto == LOG_TCP) {
@@ -312,6 +362,18 @@ LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int por
         }
 
 #endif /* AF_INET6 */
+        
+#ifdef USE_TLS
+        if (logger->clientssl) {
+            SSL_set_fd(logger->clientssl, logger->sock);
+            if((r = SSL_connect(logger->clientssl)) != 1) {
+                logger->err = "Handshake Error"; /* FIXME proper errors */
+                return -1;
+            }
+        }
+        /* FIXME peer verification */
+#endif        
+
     }
     else if (proto == LOG_UNIX) {
 
@@ -367,6 +429,7 @@ LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int por
 int
 LSF_send(LogSyslogFast* logger, const char* msg_str, int msg_len, time_t t)
 {
+    int ret;
     /* update the prefix if seconds have rolled over */
     if (t != logger->last_time)
         update_prefix(logger, t);
@@ -397,11 +460,21 @@ LSF_send(LogSyslogFast* logger, const char* msg_str, int msg_len, time_t t)
 
     /* paste the message into linebuf just past where the prefix was placed */
     memcpy(logger->msg_start, msg_str, msg_len + 1); /* include perl-added null */
-
-    int ret = send(logger->sock, logger->linebuf, line_len, 0);
-
-    if (ret < 0)
-        logger->err = strerror(errno);
+    
+    
+#ifdef USE_TLS
+    if (logger->clientssl) {
+        ret = SSL_write(logger->clientssl, logger->linebuf, line_len);
+        if (ret < 0)
+            logger->err = "Failed to send SSL"; /* FIXME proper errors */
+    } else {
+#endif
+        ret = send(logger->sock, logger->linebuf, line_len, 0);
+        if (ret < 0)
+            logger->err = strerror(errno);
+#ifdef USE_TLS
+    }
+#endif
     return ret;
 }
 
@@ -451,4 +524,24 @@ int
 LSF_get_format(LogSyslogFast* logger)
 {
     return logger->format;
+}
+
+int
+LSF_get_tls(LogSyslogFast* logger)
+{
+#ifdef USE_TLS
+    return (logger->clientssl != 0);
+#else
+    return 0;
+#endif
+}
+
+int
+LSF_can_tls()
+{
+#ifdef USE_TLS
+    return 1;
+#else
+    return 0;
+#endif
 }

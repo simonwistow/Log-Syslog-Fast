@@ -221,14 +221,14 @@ int
 get_tls(logger)
     LogSyslogFast* logger
 CODE:
-    RETVAL = 0;
+    RETVAL = LSF_get_tls(logger);
 OUTPUT:
     RETVAL
 
 int
 can_tls(...)
 CODE:
-    RETVAL = 0;
+    RETVAL = LSF_can_tls();
 OUTPUT:
     RETVAL
 

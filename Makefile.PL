@@ -11,9 +11,10 @@ WriteMakefile(
     ABSTRACT_FROM     => 'lib/Log/Syslog/Fast.pm',
     AUTHOR            => 'Adam Thomason <athomason@cpan.org>',
     DEFINE            => '',
-    INC               => '-I.',
+    INC               => '-I. -I/usr/include',
     OBJECT            => 'LogSyslogFast.o Fast.o', # link all the C files too
     CCFLAGS           => '-g',
+    LIBS              => ['-lssl'],
 );
 if  (eval {require ExtUtils::Constant; 1}) {
   # If you edit these definitions to change the constants used by this module,

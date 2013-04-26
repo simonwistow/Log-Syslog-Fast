@@ -12,6 +12,13 @@
 #define LOG_UNIX 2
 #define LOG_TLS  3
 
+#define USE_TLS 
+
+#ifdef USE_TLS
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#endif
+
 typedef struct {
 
     /* configuration */
@@ -32,6 +39,12 @@ typedef struct {
     char*  msg_start;           /* pointer into linebuf after end of prefix */
     const char* time_format;    /* strftime format string */
     const char* msg_format;     /* snprintf format string */
+
+#ifdef USE_TLS
+    /* TLS handles */
+    SSL_CTX *ssl_client_ctx;
+    SSL *clientssl;
+#endif 
 
     /* error reporting */
     const char* err;            /* error string */
@@ -59,6 +72,8 @@ const char* LSF_get_sender(LogSyslogFast* logger);
 const char* LSF_get_name(LogSyslogFast* logger);
 int LSF_get_pid(LogSyslogFast* logger);
 int LSF_get_format(LogSyslogFast* logger);
+int LSF_get_tls(LogSyslogFast* logger);
+int LSF_can_tls();
 
 int LSF_get_sock(LogSyslogFast* logger);
 
