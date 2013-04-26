@@ -31,8 +31,6 @@ CODE:
         croak("sender required");
     if (!name)
         croak("name required");
-    if (proto == LOG_TLS)
-        croak("TLS not supported in XS module. Try ::PP");
     RETVAL = LSF_alloc();
     if (!RETVAL)
         croak("Error in ->new: malloc failed");

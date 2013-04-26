@@ -24,7 +24,7 @@ use constant LOG_RFC3164 => 0;
 use constant LOG_RFC5424 => 1;
 
 our %EXPORT_TAGS = (
-    protos => [qw/ LOG_TCP LOG_UDP LOG_UNIX /],
+    protos => [qw/ LOG_TCP LOG_UDP LOG_UNIX LOG_TLS /],
     formats => [qw/ LOG_RFC3164 LOG_RFC5424 /],
     %Log::Syslog::Constants::EXPORT_TAGS,
 );
