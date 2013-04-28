@@ -3,3 +3,12 @@
 const-c.inc
 const-xs.inc
 benchmarks
+\.bs$
+\.bak$
+Makefile.old
+blib
+loggly
+papertrail
+Fast.c
+Fast.o
+Makefile
