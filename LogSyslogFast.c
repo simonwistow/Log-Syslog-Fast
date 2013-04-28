@@ -58,7 +58,7 @@ LSF_ssl_opts_alloc()
     opts->ca_file      = 0;
     opts->ca_path      = 0;    
     opts->crl_file     = 0;
-    opts->verify_mode  = SSL_VERIFY_PEER;
+    opts->verify_mode  = 0x01; /* SSL_VERIFY_PEER */
     opts->verify_depth = 1;
     
     return opts;
