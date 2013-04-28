@@ -1,4 +1,9 @@
 Revision history for Perl extension Log::Syslog::Fast.
+0.7    *
+       - Make ::PP feature compatible with the XS version including IPv6
+       - Make tests run in both XS and PP
+       - Add TLS support
+         Thanks Simon Wistow via Fastly
 0.61   Wed Oct 31 16:41:12 PDT 2012
         - Return a descriptive error on getaddrinfo failure.
 0.60   Tue Mar  6 18:00:32 PST 2012
