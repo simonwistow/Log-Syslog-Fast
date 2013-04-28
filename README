@@ -16,6 +16,12 @@ To install this module type the following:
    make
    make test
    make install
+   
+By default Log::Syslog::Fast will compile with SSL if OpenSSL is installed. 
+To prevent this do one of these
+
+   perl Makefile.PL --no-ssl
+   LOG_SYSLOG_FAST_NO_SSL=1 perl Makefile.PL
 
 COPYRIGHT AND LICENCE
 

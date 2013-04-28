@@ -1,5 +1,17 @@
 use 5.006002;
 use ExtUtils::MakeMaker;
+use DynaLoader;
+
+our $ccflags = '-g';
+our @libs    = ();
+
+my $no_ssl = ($ENV{LOG_SYSLOG_FAST_NO_SSL} || ($ARGV[0] && $ARGV[0] =~ /-+no-ssl$/));
+
+if (DynaLoader::dl_findfile("-lssl") && !$no_ssl) {
+        $ccflags .= ' -DUSE_TLS';
+        push @libs, '-lssl';
+}
+
 
 WriteMakefile(
     NAME              => 'Log::Syslog::Fast',
@@ -13,8 +25,8 @@ WriteMakefile(
     DEFINE            => '',
     INC               => '-I. -I/usr/include',
     OBJECT            => 'LogSyslogFast.o Fast.o', # link all the C files too
-    CCFLAGS           => '-g',
-    LIBS              => ['-lssl'],
+    CCFLAGS           => $ccflags,
+    LIBS              => [@libs],
 );
 if  (eval {require ExtUtils::Constant; 1}) {
   # If you edit these definitions to change the constants used by this module,
