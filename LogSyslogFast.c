@@ -14,12 +14,6 @@
 
 #define INITIAL_BUFSIZE 2048
 
-#define SSL_CA_FILE   "t/certs/test-ca.pem"
-#define SSL_CA_PATH   "t/certs"
-// #define SSL_CA_FILE   "examples/certs/syslog.loggly.crt"
-// #define SSL_CERT_FILE "examples/certs/client-cert.pem"
-// #define SSL_KEY_FILE  "examples/certs/client-key.pem"
-
 static
 void
 update_prefix(LogSyslogFast* logger, time_t t)
@@ -51,10 +45,29 @@ LSF_alloc()
     return malloc(sizeof(LogSyslogFast));
 }
 
+SSLopts*
+LSF_ssl_opts_alloc()
+{
+    SSLopts* opts = malloc(sizeof(SSLopts));
+    
+    opts->hostname     = 0;
+    opts->cert_file    = 0;
+    opts->cert         = 0;
+    opts->key_file     = 0;
+    opts->key          = 0;
+    opts->ca_file      = 0;
+    opts->ca_path      = 0;    
+    opts->crl_file     = 0;
+    opts->verify_mode  = SSL_VERIFY_PEER;
+    opts->verify_depth = 1;
+    
+    return opts;
+}
+
 int
 LSF_init(
     LogSyslogFast* logger, int proto, const char* hostname, int port,
-    int facility, int severity, const char* sender, const char* name)
+    int facility, int severity, const char* sender, const char* name,  SSLopts* ssl_opts)
 {
     if (!logger)
         return -1;
@@ -81,11 +94,12 @@ LSF_init(
 #ifdef USE_TLS
     SSL_library_init();
     SSL_load_error_strings();
+    ERR_load_BN_strings();
     logger->ssl_client_ctx = 0;
     logger->clientssl = 0;
 #endif
 
-    return LSF_set_receiver(logger, proto, hostname, port);
+    return LSF_set_receiver(logger, proto, hostname, port, ssl_opts);
 }
 
 int
@@ -222,8 +236,104 @@ LSF_set_format(LogSyslogFast* logger, int format)
 #define clean_return(x) return x;
 #endif
 
+#ifdef USE_TLS
 int
-LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int port)
+LSF_set_ssl_opts(LogSyslogFast* logger, SSLopts* ssl_opts) 
+{
+    /* SSL_cert_file */
+    if (ssl_opts->cert_file) {
+        if(SSL_CTX_use_certificate_chain_file(logger->ssl_client_ctx, ssl_opts->cert_file) <= 0) {
+            logger->err = "Couldn't use certificate chain file";
+            ERR_print_errors_fp(stderr);
+            return -1;
+        }
+    }
+    
+    if (ssl_opts->cert) {
+        BIO *bio = BIO_new_mem_buf(ssl_opts->cert, -1);
+        X509 *cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+        int r = SSL_CTX_use_certificate(logger->ssl_client_ctx, cert);
+        X509_free(cert);
+        BIO_free(bio);
+        if (r<=0 ) {
+            logger->err = "Couldn't use certificate";
+            return -1;
+        }
+    }
+    
+    /* FIXME verify certs */
+    
+    /* SSL_key_file */
+    if (ssl_opts->key_file) {
+        if (SSL_CTX_use_PrivateKey_file(logger->ssl_client_ctx, ssl_opts->key_file, SSL_FILETYPE_PEM) <= 0) {
+            logger->err = "Couldn't use private key file";
+            ERR_print_errors_fp(stderr);
+            return -1;
+        }
+    }
+    
+    /* SSL_key */
+    if (ssl_opts->key) {
+        BIO *bio = BIO_new_mem_buf(ssl_opts->cert, -1);
+        EVP_PKEY* key = PEM_read_bio_PrivateKey(bio, NULL, NULL, NULL);
+        int r = SSL_CTX_use_PrivateKey(logger->ssl_client_ctx, key);
+        EVP_PKEY_free(key);
+        BIO_free(bio);
+        if (r<= 0) {
+            logger->err = "Couldn't use private key";
+            ERR_print_errors_fp(stderr);
+            return -1;
+        }
+    }
+
+    /* SSL_ca_file */
+    if (ssl_opts->verify_mode == SSL_VERIFY_NONE && (ssl_opts->ca_file || ssl_opts->ca_path)) {
+        if(SSL_CTX_load_verify_locations(logger->ssl_client_ctx, ssl_opts->ca_file, ssl_opts->ca_path) <= 0) {
+            logger->err = "Couldn't verify locations";
+            ERR_print_errors_fp(stderr);
+            return -1;
+        }
+    }
+
+    if (ssl_opts->check_crl) {
+        X509_STORE* store = SSL_CTX_get_cert_store(logger->ssl_client_ctx); 
+        X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK|X509_V_FLAG_CRL_CHECK_ALL);
+
+        if (ssl_opts->crl_file) {
+            BIO* bio = BIO_new_file(ssl_opts->crl_file, "r");
+            X509_CRL* crl = PEM_read_bio_X509_CRL(bio, NULL, NULL, NULL);
+            if (crl) {
+                X509_STORE_add_crl(store, crl);
+            } else {
+                logger->err = "Invalid certificate revocation list";
+                return -1;
+            }
+        }
+    }
+    
+    
+    /* SSL_verify_mode and SSL_verify_depth */
+    SSL_CTX_set_verify(logger->ssl_client_ctx, ssl_opts->verify_mode, NULL);
+    SSL_CTX_set_verify_depth(logger->ssl_client_ctx, ssl_opts->verify_depth);
+
+    if (ssl_opts->verify_mode != SSL_VERIFY_PEER)
+        return 1;
+
+    X509 *ssl_client_cert = NULL;
+    if (ssl_client_cert = SSL_get_peer_certificate(logger->clientssl)) {
+        long verifyresult = SSL_get_verify_result(logger->clientssl);
+        X509_free(ssl_client_cert);   
+
+        if (verifyresult != X509_V_OK) {
+            logger->err = "TLS Certificate Verify Failed";
+            return -1;
+        }
+    }
+}
+#endif
+
+int
+LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int port, SSLopts* ssl_opts)
 {
     const struct sockaddr* p_address;
     int address_len;
@@ -248,7 +358,9 @@ LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int por
             logger->err = "Couldn't create SSL context";
             return -1;
         }
-        /* FIXME certifcate certification */
+        SSL_CTX_set_mode(logger->ssl_client_ctx, SSL_MODE_AUTO_RETRY);
+        
+        /* FIXME certifcate verification */
         if (!logger->clientssl)
             logger->clientssl = SSL_new(logger->ssl_client_ctx);
             
@@ -257,55 +369,16 @@ LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int por
             logger->err = "Couldn't create SSL client";
             return -1;
         }
+        SSL_set_mode(logger->clientssl, SSL_MODE_AUTO_RETRY);
         
-        /* FIX ME - load these from a config hash */
-#ifdef SSL_CA_FILE
-        if(SSL_CTX_use_certificate_file(logger->ssl_client_ctx, SSL_CA_FILE, SSL_FILETYPE_PEM) <= 0) {
-            logger->err = "Couldn't use cert";
-            ERR_print_errors_fp(stderr);
-            return -1;      
-        }
-        
-        if(SSL_CTX_load_verify_locations(logger->ssl_client_ctx, SSL_CA_FILE, SSL_CA_PATH) <= 0) {
-            logger->err = "Couldn't verify locations";
-            ERR_print_errors_fp(stderr);
-            return -1;
-        }
-#endif
-
-#ifdef SSL_CERT_FILE
-        if(SSL_CTX_use_certificate_chain_file(logger->ssl_client_ctx, SSL_CERT_FILE) <= 0) {
-            logger->err = "Couldn't use certificate chain file";
-            ERR_print_errors_fp(stderr);
-            return -1;
-        }
-#endif
- 
-#ifdef SSL_KEY_FILE     
-        if (SSL_CTX_use_PrivateKey_file(logger->ssl_client_ctx, SSL_KEY_FILE, SSL_FILETYPE_PEM) <= 0) {
-            logger->err = "Couldn't use private key file";
-            ERR_print_errors_fp(stderr);
-            return -1;
-        }
-#endif
-        
-        
-        SSL_CTX_set_verify(logger->ssl_client_ctx, SSL_VERIFY_PEER, NULL);
-        SSL_CTX_set_verify_depth(logger->ssl_client_ctx, 1);
-        
-        /* FIXME do verify_peer needs to be configurable */
-        X509 *ssl_client_cert = NULL;
-        if (ssl_client_cert = SSL_get_peer_certificate(logger->clientssl)) {
-            long verifyresult = SSL_get_verify_result(logger->clientssl);
-            X509_free(ssl_client_cert);   
-             
-            if (verifyresult != X509_V_OK) {
-                logger->err = "TLS Certificate Verify Failed";
+        if (ssl_opts) {
+            /* TODO ssl hostname */
+            
+            if (LSF_set_ssl_opts(logger, ssl_opts)<0) 
                 return -1;
-            }
         }
-    }
-#endif
+    }    
+#endif /* USE_TLS */
 
 #ifdef AF_INET6
     struct addrinfo* results = NULL;
@@ -415,18 +488,6 @@ LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int por
         }
 
 #endif /* AF_INET6 */
-        
-#ifdef USE_TLS
-        if (logger->clientssl) {
-            SSL_set_fd(logger->clientssl, logger->sock);
-            if((r = SSL_connect(logger->clientssl)) != 1) {
-                fprintf(stderr, "TLS Handshake Error: %d\n", SSL_get_error(logger->clientssl, r));
-                logger->err = "TLS Handshake Error"; /* FIXME proper errors */
-                return -1;
-            }
-        }
-        /* FIXME peer verification */
-#endif        
 
     }
     else if (proto == LOG_UNIX) {
@@ -476,6 +537,27 @@ LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int por
             clean_return(-1);
         }
     }
+    
+    #ifdef USE_TLS
+    int r;
+            if (logger->clientssl) {
+                SSL_set_fd(logger->clientssl, logger->sock);
+                retry:
+                if((r = SSL_connect(logger->clientssl)) != 1) {
+                    switch (SSL_get_error(logger->clientssl, r)) {
+                                        //case SSL_ERROR_WANT_WRITE:
+                                            //fprintf(stderr, "Want write\n");
+                                            //return -1;
+                                            //goto retry;
+                                        default:
+                                            fprintf(stderr, "TLS Handshake Error: %d %d\n", SSL_get_error(logger->clientssl, r), errno);
+                                            logger->err = "TLS Handshake Error"; /* FIXME proper errors */
+                                            return -1;
+                                    }
+                }
+            }
+            /* FIXME peer verification */
+    #endif
 
     clean_return(0);
 }

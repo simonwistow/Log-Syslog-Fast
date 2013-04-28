@@ -8,6 +8,37 @@
 
 #include "const-c.inc"
 
+static void option(SSLopts* ssl_opts, SV *tag, SV *value)
+{
+    STRLEN len, len2;
+    char *key = SvPV(tag, len);
+    char *val = SvPV(value, len2);
+    
+    if (!strcmp(key, "SSL_hostname")) {
+        ssl_opts->hostname = val;
+    } else if (!strcmp(key, "SSL_cert_file")) {
+        ssl_opts->cert_file = val;
+    } else if (!strcmp(key, "SSL_cert")) {
+        ssl_opts->cert = val;
+    } else if (!strcmp(key, "SSL_key_file")) {
+        ssl_opts->key_file = val;
+    } else if (!strcmp(key, "SSL_key")) {
+        ssl_opts->key = val;
+    } else if (!strcmp(key, "SSL_ca_file")) {
+        ssl_opts->ca_file = val;
+    } else if (!strcmp(key, "SSL_ca_path")) {
+        ssl_opts->ca_path = val;
+    } else if (!strcmp(key, "SSL_verify_mode")) {
+        ssl_opts->verify_mode = atoi(val);
+    } else if (!strcmp(key, "SSL_check_crl")) {
+        ssl_opts->check_crl = 1;
+    } else if (!strcmp(key, "SSL_crl_file")) {
+        ssl_opts->crl_file = val;
+    } else {
+       warn("Unknown option %s => %s", key, val); 
+    }
+}
+
 MODULE = Log::Syslog::Fast		PACKAGE = Log::Syslog::Fast
 
 INCLUDE: const-xs.inc
@@ -31,11 +62,20 @@ CODE:
         croak("sender required");
     if (!name)
         croak("name required");
+
+    if (items-8 % 2 == 0) croak("Odd number of elements in options");        
+
+    SSLopts* ssl_opts = LSF_ssl_opts_alloc();
+    int i;
+    for (i = 8; i < items; i += 2) option(ssl_opts, ST(i), ST(i + 1));
+    
     RETVAL = LSF_alloc();
     if (!RETVAL)
         croak("Error in ->new: malloc failed");
-    if (LSF_init(RETVAL, proto, hostname, port, facility, severity, sender, name) < 0)
+    if (LSF_init(RETVAL, proto, hostname, port, facility, severity, sender, name, ssl_opts) < 0)
         croak("Error in ->new: %s", RETVAL->err);
+
+    free(ssl_opts);
 OUTPUT:
     RETVAL
 
@@ -65,7 +105,7 @@ OUTPUT:
     RETVAL
 
 void
-set_receiver(logger, proto, hostname, port)
+set_receiver(logger, proto, hostname, port, ...)
     LogSyslogFast* logger
     int proto
     char* hostname
@@ -75,7 +115,17 @@ ALIAS:
 CODE:
     if (!hostname)
         croak("hostname required");
-    int ret = LSF_set_receiver(logger, proto, hostname, port);
+    
+    if (items-4 % 2 == 0) croak("Odd number of elements in options");        
+
+    SSLopts* ssl_opts = LSF_ssl_opts_alloc();
+    int i;
+    for (i = 4; i < items; i += 2) option(ssl_opts, ST(i), ST(i + 1));
+        
+    int ret = LSF_set_receiver(logger, proto, hostname, port, ssl_opts);
+    
+    free(ssl_opts);
+    
     if (ret < 0)
         croak("Error in set_receiver: %s", logger->err);
 

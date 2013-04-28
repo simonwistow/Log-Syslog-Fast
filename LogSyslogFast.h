@@ -12,8 +12,6 @@
 #define LOG_UNIX 2
 #define LOG_TLS  3
 
-#define USE_TLS 
-
 #ifdef USE_TLS
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -51,11 +49,37 @@ typedef struct {
 
 } LogSyslogFast;
 
+typedef struct {
+
+    char* hostname;
+
+    char* cert_file;
+    char* cert;
+
+    char* key_file;
+    char* key;
+
+    char* ca_file;
+    char* ca;
+    char* ca_path;
+
+    int   check_crl;
+    char* crl_file;
+
+    int   verify_mode;
+    int   verify_depth;
+} SSLopts;
+
+
 LogSyslogFast* LSF_alloc();
-int LSF_init(LogSyslogFast* logger, int proto, const char* hostname, int port, int facility, int severity, const char* sender, const char* name);
+SSLopts*       LSF_ssl_opts_alloc();
+int LSF_init(LogSyslogFast* logger, int proto, const char* hostname, int port, int facility, int severity, const char* sender, const char* name, SSLopts* ssl_opts);
 int LSF_destroy(LogSyslogFast* logger);
 
-int LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int port);
+#ifdef USE_TLS
+int LSF_set_ssl_opts(LogSyslogFast* logger, SSLopts* ssl_opts);
+#endif
+int LSF_set_receiver(LogSyslogFast* logger, int proto, const char* hostname, int port, SSLopts* ssl_opts);
 
 void LSF_set_priority(LogSyslogFast* logger, int facility, int severity);
 void LSF_set_facility(LogSyslogFast* logger, int facility);
